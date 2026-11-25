@@ -42,4 +42,11 @@ class TrustTests(unittest.TestCase):
         self.assertEqual(self.act('trust.withdraw',id='bundle',at=20),'active_replicas_block')
     def test_expiry(self):
         self.setup_pair();self.assertEqual(self.act('handshake.expiry',service='alpha',at=90,horizon=20),'at_risk')
+    def test_generation_receipts_and_bundle_window(self):
+        self.setup_pair()
+        self.assertEqual(self.act('identity.issue',id='wrong',identity='ns/alpha',generation=4,root='r2',not_before=5,expires=50),'wrong_generation')
+        for name in ('alpha','beta'):self.act('trust.ack',bundle='bundle',replica='rep-'+name,generation=2)
+        self.assertEqual(self.act('trust.ack',bundle='bundle',replica='rep-alpha',generation=1),'stale_receipt')
+        self.act('handshake.authorize',caller='ns/alpha',callee='ns/beta',purpose='read',expires=200,at=1)
+        self.assertEqual(self.act('handshake.decide',id='late',caller_cert='cert-alpha',callee_cert='cert-beta',caller_replica='rep-alpha',callee_replica='rep-beta',bundle='bundle',purpose='read',at=101),'bundle_outside_window')
 if __name__=='__main__':unittest.main()
