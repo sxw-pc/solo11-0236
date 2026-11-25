@@ -1,0 +1,9 @@
+[
+{"action":"identity.bind","id":"ns/alpha","namespace":"ns","service":"alpha"},
+{"action":"identity.issue","id":"cert-alpha","identity":"ns/alpha","generation":1,"root":"r1","not_before":0,"expires":100},
+{"action":"identity.replica","id":"rep-alpha","identity":"ns/alpha","cert":"cert-alpha","active":true},
+{"action":"trust.publish","id":"bundle","roots":["r1","r2"],"start":0,"expires":100},
+{"action":"trust.ack","bundle":"bundle","replica":"rep-alpha","generation":1},
+{"action":"trust.coverage","bundle":"bundle","service":"alpha"},
+{"action":"handshake.expiry","service":"alpha","at":90,"horizon":20}
+]

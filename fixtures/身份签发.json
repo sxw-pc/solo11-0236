@@ -1,0 +1,1 @@
+{"action":"identity.issue","id":"entry-cert","identity":"ns/entry","generation":1,"root":"r1","not_before":0,"expires":100,"setup":[{"action":"identity.bind","id":"ns/entry","namespace":"ns","service":"entry"}]}
