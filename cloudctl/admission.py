@@ -21,7 +21,7 @@ def handshake(db,r):
         caller_rep=one(db,'SELECT id FROM replicas WHERE id=? AND cert=? AND active=1',(r['caller_replica'],r['caller_cert']))
         callee_rep=one(db,'SELECT id FROM replicas WHERE id=? AND cert=? AND active=1',(r['callee_replica'],r['callee_cert']))
         if not caller_rep or not callee_rep:reason='replica_mismatch'
-        elif not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=?',(r['bundle'],r['caller_replica'])) or not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=?',(r['bundle'],r['callee_replica'])):reason='unconfirmed_bundle'
+        elif not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['caller_replica'],caller['generation'],'confirmed',r['at'])) or not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['callee_replica'],callee['generation'],'confirmed',r['at'])):reason='unconfirmed_bundle'
     db.execute('INSERT INTO handshakes VALUES(?,?,?,?,?,?)',(r['id'],caller['identity'] if caller else '',callee['identity'] if callee else '',r['at'],'open' if reason=='allowed' else 'denied',reason))
     db.execute('INSERT INTO admissions VALUES(?,?,?,?)',(r['id'],r['id'],reason,r['at']))
     return event(db,'handshake',r['id'],reason,{'bundle':r['bundle'],'at':r['at']})
