@@ -38,6 +38,7 @@ class TrustTests(unittest.TestCase):
         self.assertEqual(self.act('handshake.authorize',caller='ns/alpha',callee='ns/beta',purpose='read',expires=50,at=1),'authorized')
         self.assertEqual(self.handshake(),'allowed')
         self.assertEqual(self.act('identity.revoke',id='cert-alpha'),'revoked')
+        self.assertEqual(self.act('identity.audit',service='alpha',at=11),'at_risk')
         self.assertEqual(self.act('handshake.decide',id='call2',caller_cert='cert-alpha',callee_cert='cert-beta',caller_replica='rep-alpha',callee_replica='rep-beta',bundle='bundle',purpose='read',at=11),'revoked')
         self.assertEqual(self.act('trust.withdraw',id='bundle',at=20),'active_replicas_block')
     def test_expiry(self):
