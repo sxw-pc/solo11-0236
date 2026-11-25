@@ -1,0 +1,1 @@
+{"action":"handshake.authorize","caller":"ns/a","callee":"ns/b","purpose":"read","at":100,"expires":10}
