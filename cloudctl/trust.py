@@ -22,6 +22,12 @@ def coverage(db,r):
     replicas=[x for ident in identities for x in many(db,'SELECT id FROM replicas WHERE identity=? AND active=1',(ident['id'],))]
     missing=[x['id'] for x in replicas if not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND status=?',(r['bundle'],x['id'],'confirmed'))]
     return event(db,'coverage',r['bundle'],'complete' if replicas and not missing else 'partial',{'missing':missing})
+def retry(db,r):
+    bundle=one(db,'SELECT * FROM bundles WHERE id=? AND status=?',(r['bundle'],'active'))
+    if not bundle:return event(db,'retry',r['bundle'],'bundle_unavailable',{})
+    replicas=many(db,'SELECT id FROM replicas WHERE active=1')
+    missing=[x['id'] for x in replicas if not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=?',(r['bundle'],x['id']))]
+    return event(db,'retry',r['bundle'],'pending' if missing else 'complete',{'retry_replicas':missing})
 def withdraw(db,r):
     bundle=one(db,'SELECT * FROM bundles WHERE id=?',(r['id'],))
     if not bundle:return event(db,'withdraw',r['id'],'missing',{})

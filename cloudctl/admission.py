@@ -12,6 +12,7 @@ def handshake(db,r):
     bundle=one(db,'SELECT * FROM bundles WHERE id=? AND status=?',(r['bundle'],'active'))
     reason='allowed'
     if not caller or not callee or not bundle:reason='missing_trust'
+    elif not (bundle['start']<=r['at']<bundle['expires']):reason='bundle_outside_window'
     elif caller['status']!='active' or callee['status']!='active':reason='revoked'
     elif not (caller['not_before']<=r['at']<caller['expires'] and callee['not_before']<=r['at']<callee['expires']):reason='expired'
     elif caller['root'] not in json.loads(bundle['roots']) or callee['root'] not in json.loads(bundle['roots']):reason='untrusted_root'

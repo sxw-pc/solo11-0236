@@ -27,8 +27,10 @@ class TrustTests(unittest.TestCase):
     def test_bundle_coverage_and_authorization(self):
         self.setup_pair()
         self.assertEqual(self.act('trust.coverage',bundle='bundle',service='alpha'),'partial')
+        self.assertEqual(self.act('trust.retry',bundle='bundle'),'pending')
         for name in ('alpha','beta'):self.assertEqual(self.act('trust.ack',bundle='bundle',replica='rep-'+name,generation=1),'confirmed')
         self.assertEqual(self.act('trust.coverage',bundle='bundle',service='alpha'),'complete')
+        self.assertEqual(self.act('trust.retry',bundle='bundle'),'complete')
         self.assertEqual(self.handshake(),'no_call_policy')
     def test_cross_system_handshake_revocation(self):
         self.setup_pair()
