@@ -16,7 +16,7 @@ def acknowledge(db,r):
     if not replica or not replica['active']:
         return event(db,'ack',r['bundle'],'replica_unavailable',{})
     cert=one(db,'SELECT * FROM certificates WHERE id=?',(replica['cert'],))
-    if not cert or cert['status']!='active' or cert['root'] not in json.loads(bundle['roots']):
+    if not cert or cert['status']!='active' or not cert['not_before']<=at<cert['expires'] or cert['root'] not in json.loads(bundle['roots']):
         return event(db,'ack',r['bundle'],'untrusted_replica',{})
     if r['generation']!=cert['generation']:
         return event(db,'ack',r['bundle'],'wrong_replica_generation',{'current':cert['generation']})
@@ -37,7 +37,7 @@ def coverage(db,r):
     for rep in replicas:
         cert=one(db,'SELECT * FROM certificates WHERE id=?',(rep['cert'],))
         receipt=one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND status=?',(r['bundle'],rep['id'],'confirmed'))
-        if not cert or cert['root'] not in json.loads(bundle['roots']) or not receipt or receipt['generation']!=cert['generation'] or receipt['at']>at:
+        if not cert or cert['status']!='active' or not cert['not_before']<=at<cert['expires'] or cert['root'] not in json.loads(bundle['roots']) or not receipt or receipt['generation']!=cert['generation'] or receipt['at']>at:
             missing.append(rep['id'])
     return event(db,'coverage',r['bundle'],'complete' if replicas and not missing else 'partial',{'missing':missing})
 def retry(db,r):
@@ -45,7 +45,7 @@ def retry(db,r):
     if not bundle:return event(db,'retry',r['bundle'],'bundle_unavailable',{})
     at=r.get('at',bundle['start'])
     if not bundle['start']<=at<bundle['expires']:return event(db,'retry',r['bundle'],'bundle_outside_window',{})
-    replicas=many(db,'SELECT r.id,c.generation,c.root FROM replicas r JOIN certificates c ON c.id=r.cert WHERE r.active=1 AND c.status=?',('active',))
+    replicas=many(db,'SELECT r.id,c.generation,c.root FROM replicas r JOIN certificates c ON c.id=r.cert WHERE r.active=1 AND c.status=? AND c.not_before<=? AND c.expires>?',('active',at,at))
     missing=[]
     for rep in replicas:
         receipt=one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=?',(r['bundle'],rep['id']))
@@ -59,7 +59,7 @@ def withdraw(db,r):
     bundle=one(db,'SELECT * FROM bundles WHERE id=?',(r['id'],))
     if not bundle:return event(db,'withdraw',r['id'],'missing',{})
     dependent=[]
-    replicas=many(db,'SELECT r.id,c.root,c.generation FROM replicas r JOIN certificates c ON c.id=r.cert WHERE r.active=1 AND c.status=?',('active',))
+    replicas=many(db,'SELECT r.id,c.root,c.generation FROM replicas r JOIN certificates c ON c.id=r.cert WHERE r.active=1 AND c.status=? AND c.not_before<=? AND c.expires>?',('active',r['at'],r['at']))
     for rep in replicas:
         receipt=one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=?',(r['id'],rep['id'],rep['generation']))
         if not receipt or rep['root'] not in json.loads(bundle['roots']):continue
