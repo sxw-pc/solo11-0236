@@ -1,4 +1,5 @@
 from .store import one,many,event
+from . import physical_erasure as pe
 def bind(db,r):
     if not r['id'].startswith(r['namespace']+'/'):
         return event(db,'bind',r['id'],'wrong_namespace',{})
@@ -36,4 +37,16 @@ def retire(db,r):
     if active or calls:return event(db,'retire',r['identity'],'blocked',{'replicas':active,'calls':calls})
     db.execute('INSERT OR REPLACE INTO retirements VALUES(?,?,?)',(r['identity'],r['at'],r['reason']))
     db.execute('UPDATE identities SET status=? WHERE id=?',('retired',r['identity']))
-    return event(db,'retire',r['identity'],'retired',{})
+    # retirement of the control-plane identity does not discharge customer deletion orders or
+    # court preservation orders on backups, diagnostic dumps and key shares outside these tables
+    custody=None
+    has_data=one(db,'SELECT id FROM data_objects WHERE identity=? LIMIT 1',(r['identity'],))
+    has_orders=one(db,'SELECT id FROM legal_orders WHERE identity=? LIMIT 1',(r['identity'],))
+    has_volumes=one(db,'SELECT id FROM physical_volumes WHERE identity=? LIMIT 1',(r['identity'],))
+    if has_data or has_orders or has_volumes:
+        existing=one(db,'SELECT identity FROM custody_cases WHERE identity=?',(r['identity'],))
+        if not existing:
+            db.execute('INSERT INTO custody_cases VALUES(?,?,?,?,?,?)',(r['identity'],None,None,'awaiting_custody',r['at'],None))
+        case=one(db,'SELECT * FROM custody_cases WHERE identity=?',(r['identity'],))
+        custody={'state':case['state'],'recoverable_controllers':pe.tenant_status(db,r['identity'],r['at'])}
+    return event(db,'retire',r['identity'],'retired',{'custody':custody})
