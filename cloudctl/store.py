@@ -1,5 +1,6 @@
 import json,sqlite3
 from contextlib import contextmanager
+_EXTERNAL=set()
 SCHEMA="""
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS identities(id TEXT PRIMARY KEY,namespace TEXT,service TEXT,status TEXT);
@@ -21,10 +22,17 @@ def init(path):
 @contextmanager
 def tx(path):
     db=sqlite3.connect(path);db.row_factory=sqlite3.Row
+    # Mark the connection so module helpers do not commit midway through the
+    # caller's explicit transaction (which would break all-or-nothing work).
+    _EXTERNAL.add(id(db))
     try:
         db.execute('BEGIN IMMEDIATE');yield db;db.commit()
     except Exception:db.rollback();raise
-    finally:db.close()
+    finally:
+        _EXTERNAL.discard(id(db));db.close()
+def commit(db):
+    """Commit unless the connection is already inside a caller-owned transaction."""
+    if id(db) not in _EXTERNAL:db.commit()
 def one(db,q,a=()):
     r=db.execute(q,a).fetchone();return dict(r) if r else None
 def many(db,q,a=()):return [dict(r) for r in db.execute(q,a)]
