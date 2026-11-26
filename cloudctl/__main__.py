@@ -1,6 +1,19 @@
 import argparse,json,sys
-from . import identity,trust,admission,store,audit
-OPS={'identity.bind':identity.bind,'identity.issue':identity.issue,'identity.revoke':identity.revoke,'identity.replica':identity.replica,'identity.retire':identity.retire,'trust.publish':trust.publish,'trust.ack':trust.acknowledge,'trust.coverage':trust.coverage,'trust.retry':trust.retry,'trust.withdraw':trust.withdraw,'handshake.authorize':admission.authorize,'handshake.decide':admission.handshake,'handshake.close':admission.close,'handshake.expiry':admission.expiry,'identity.audit':audit.inspect}
+from . import identity,trust,admission,store,audit,billing_facts,request_attribution,customer_billing,vendor_settlement
+OPS={'identity.bind':identity.bind,'identity.issue':identity.issue,'identity.revoke':identity.revoke,'identity.replica':identity.replica,'identity.retire':identity.retire,'trust.publish':trust.publish,'trust.ack':trust.acknowledge,'trust.coverage':trust.coverage,'trust.retry':trust.retry,'trust.withdraw':trust.withdraw,'handshake.authorize':admission.authorize,'handshake.decide':admission.handshake,'handshake.close':admission.close,'handshake.expiry':admission.expiry,'identity.audit':audit.inspect,
+'billing.capture_request':lambda db,r:billing_facts.capture_request(db,r['page'],r['rows'],r['device'],r.get('clock_skew',0),r.get('stored_at',0)),
+'billing.capture_proxy':lambda db,r:billing_facts.capture_proxy(db,r['page'],r['rows'],r['device'],r.get('clock_skew',0),r.get('stored_at',0)),
+'billing.capture_backend':lambda db,r:billing_facts.capture_backend(db,r['page'],r['rows'],r['device'],r.get('clock_skew',0),r.get('stored_at',0)),
+'billing.bind_evidence':lambda db,r:request_attribution.bind_evidence(db,r['token'],r['tenant'],r['evidence'],r.get('at',0)),
+'billing.resolve':lambda db,r:request_attribution.resolve(db,r['token']),
+'billing.resolve_all':lambda db,r:{'resolutions':request_attribution.resolve_all(db)},
+'billing.issue_batch':lambda db,r:customer_billing.issue_batch(db,r['id'],r['tenant'],r.get('period',''),r.get('at',0)),
+'billing.supplement':lambda db,r:customer_billing.supplement(db,r['adjust'],r['batch'],r['token'],r.get('at',0)),
+'billing.reverse':lambda db,r:customer_billing.reverse(db,r['adjust'],r['batch'],r['token'],r['units'],r.get('at',0)),
+'billing.customer_account':lambda db,r:customer_billing.account(db,r['tenant']),
+'billing.pay_bandwidth':lambda db,r:vendor_settlement.pay_bandwidth(db,r['id'],r.get('period',''),r.get('at',0)),
+'billing.allocate_liability':lambda db,r:vendor_settlement.allocate_liability(db,r['token']),
+'billing.platform_account':lambda db,r:vendor_settlement.platform_account(db)}
 def execute(path,r):
     with store.tx(path) as db:
         if r['action'] not in OPS:raise ValueError('unknown action')
