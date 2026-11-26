@@ -1,5 +1,6 @@
 import json
-from .store import one,many,event
+from .store import one,many,event,Decision
+from . import hardware_custody as hw
 def authorize(db,r):
     if r['expires']<=r['at']:return event(db,'authorize',r['caller'],'invalid_window',{})
     db.execute('INSERT OR REPLACE INTO call_policies VALUES(?,?,?,?)',(r['caller'],r['callee'],r['purpose'],r['expires']))
@@ -10,21 +11,30 @@ def handshake(db,r):
     caller=one(db,'SELECT * FROM certificates WHERE id=?',(r['caller_cert'],))
     callee=one(db,'SELECT * FROM certificates WHERE id=?',(r['callee_cert'],))
     bundle=one(db,'SELECT * FROM bundles WHERE id=? AND status=?',(r['bundle'],'active'))
-    reason='allowed'
+    reason='allowed';block=None
     if not caller or not callee or not bundle:reason='missing_trust'
     elif not (bundle['start']<=r['at']<bundle['expires']):reason='bundle_outside_window'
     elif caller['status']!='active' or callee['status']!='active':reason='revoked'
     elif not (caller['not_before']<=r['at']<caller['expires'] and callee['not_before']<=r['at']<callee['expires']):reason='expired'
-    elif caller['root'] not in json.loads(bundle['roots']) or callee['root'] not in json.loads(bundle['roots']):reason='untrusted_root'
-    elif not one(db,'SELECT * FROM call_policies WHERE caller=? AND callee=? AND purpose=? AND expires>?',(caller['identity'],callee['identity'],r['purpose'],r['at'])):reason='no_call_policy'
     else:
-        caller_rep=one(db,'SELECT id FROM replicas WHERE id=? AND cert=? AND active=1',(r['caller_replica'],r['caller_cert']))
-        callee_rep=one(db,'SELECT id FROM replicas WHERE id=? AND cert=? AND active=1',(r['callee_replica'],r['callee_cert']))
-        if not caller_rep or not callee_rep:reason='replica_mismatch'
-        elif not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['caller_replica'],caller['generation'],'confirmed',r['at'])) or not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['callee_replica'],callee['generation'],'confirmed',r['at'])):reason='unconfirmed_bundle'
-    db.execute('INSERT INTO handshakes VALUES(?,?,?,?,?,?)',(r['id'],caller['identity'] if caller else '',callee['identity'] if callee else '',r['at'],'open' if reason=='allowed' else 'denied',reason))
-    db.execute('INSERT INTO admissions VALUES(?,?,?,?)',(r['id'],r['id'],reason,r['at']))
-    return event(db,'handshake',r['id'],reason,{'bundle':r['bundle'],'at':r['at']})
+        caller_block=hw.hardware_block_for_replica(db,r.get('caller_replica'),r['at']) if r.get('caller_replica') else None
+        callee_block=hw.hardware_block_for_replica(db,r.get('callee_replica'),r['at']) if r.get('callee_replica') else None
+        block=caller_block or callee_block
+        if block:
+            reason=Decision('hardware_quarantined',('recalled_hardware','recalled_key','recalled_key_reuse',
+                                                    'replica_quarantined',block.get('reason','hardware_quarantined')))
+        elif caller['root'] not in json.loads(bundle['roots']) or callee['root'] not in json.loads(bundle['roots']):reason='untrusted_root'
+        elif not one(db,'SELECT * FROM call_policies WHERE caller=? AND callee=? AND purpose=? AND expires>?',(caller['identity'],callee['identity'],r['purpose'],r['at'])):reason='no_call_policy'
+        else:
+            caller_rep=one(db,'SELECT id FROM replicas WHERE id=? AND cert=? AND active=1',(r['caller_replica'],r['caller_cert']))
+            callee_rep=one(db,'SELECT id FROM replicas WHERE id=? AND cert=? AND active=1',(r['callee_replica'],r['callee_cert']))
+            if not caller_rep or not callee_rep:reason='replica_mismatch'
+            elif not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['caller_replica'],caller['generation'],'confirmed',r['at'])) or not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['callee_replica'],callee['generation'],'confirmed',r['at'])):reason='unconfirmed_bundle'
+    db.execute('INSERT INTO handshakes VALUES(?,?,?,?,?,?)',(r['id'],caller['identity'] if caller else '',callee['identity'] if callee else '',r['at'],'open' if reason=='allowed' else 'denied',str(reason)))
+    db.execute('INSERT INTO admissions VALUES(?,?,?,?)',(r['id'],r['id'],str(reason),r['at']))
+    evidence={'bundle':r['bundle'],'at':r['at']}
+    if block:evidence['hardware_block']=block
+    return event(db,'handshake',r['id'],reason,evidence)
 def close(db,r):
     call=one(db,'SELECT * FROM handshakes WHERE id=?',(r['id'],))
     if not call:return event(db,'close',r['id'],'missing',{})

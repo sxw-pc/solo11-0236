@@ -1,5 +1,6 @@
 import json
-from .store import one,many,event
+from .store import one,many,event,Decision
+from . import hardware_custody as hw
 def publish(db,r):
     if r['start']>=r['expires'] or len(set(r['roots']))!=len(r['roots']):
         return event(db,'publish',r['id'],'invalid_bundle',{})
@@ -20,6 +21,11 @@ def acknowledge(db,r):
         return event(db,'ack',r['bundle'],'untrusted_replica',{})
     if r['generation']!=cert['generation']:
         return event(db,'ack',r['bundle'],'wrong_replica_generation',{'current':cert['generation']})
+    block=hw.hardware_block_for_replica(db,r['replica'],at)
+    if block:
+        d=Decision('hardware_quarantined',('recalled_hardware','recalled_key','recalled_key_reuse',
+                                           'replica_quarantined',block.get('reason','hardware_quarantined')))
+        return event(db,'ack',r['bundle'],d,block)
     previous=one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=?',(r['bundle'],r['replica']))
     if previous and r['generation']<previous['generation']:
         return event(db,'ack',r['bundle'],'stale_receipt',{})
@@ -33,13 +39,18 @@ def coverage(db,r):
         return event(db,'coverage',r['bundle'],'bundle_unavailable',{'at':at})
     identities=many(db,'SELECT id FROM identities WHERE service=? AND status=?',(r['service'],'active'))
     replicas=[x for ident in identities for x in many(db,'SELECT * FROM replicas WHERE identity=? AND active=1',(ident['id'],))]
-    missing=[]
+    missing=[];hardware_blocks={}
     for rep in replicas:
         cert=one(db,'SELECT * FROM certificates WHERE id=?',(rep['cert'],))
         receipt=one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND status=?',(r['bundle'],rep['id'],'confirmed'))
+        block=hw.hardware_block_for_replica(db,rep['id'],at)
+        if block:
+            hardware_blocks[rep['id']]=block
+            missing.append(rep['id'])
+            continue
         if not cert or cert['status']!='active' or not cert['not_before']<=at<cert['expires'] or cert['root'] not in json.loads(bundle['roots']) or not receipt or receipt['generation']!=cert['generation'] or receipt['at']>at:
             missing.append(rep['id'])
-    return event(db,'coverage',r['bundle'],'complete' if replicas and not missing else 'partial',{'missing':missing})
+    return event(db,'coverage',r['bundle'],'complete' if replicas and not missing else 'partial',{'missing':missing,'hardware_blocks':hardware_blocks})
 def retry(db,r):
     bundle=one(db,'SELECT * FROM bundles WHERE id=? AND status=?',(r['bundle'],'active'))
     if not bundle:return event(db,'retry',r['bundle'],'bundle_unavailable',{})
