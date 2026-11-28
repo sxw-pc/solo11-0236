@@ -1,0 +1,13 @@
+[
+{"action":"image.capture","packet":"p-a2","rows":[{"image":"proxy","build":"b2","builder":"ci","digest":"A2"}]},
+{"action":"image.capture","packet":"p-r1","rows":[{"image":"proxy","build":"b1","builder":"ci","digest":"R1"}]},
+{"action":"image.capture","packet":"p-r2","rows":[{"image":"proxy","build":"r2b","builder":"rogue-box","digest":"R2"}]},
+{"action":"image.builder","builder":"ci","at":1},
+{"action":"image.manifest","tag":"stable","manifest_digest":"M","arch":"amd64","sub_digest":"A2","signed_by":"top-key","at":4},
+{"action":"image.manifest","tag":"stable","manifest_digest":"M","arch":"arm64","sub_digest":"R2","signed_by":"top-key","at":4},
+{"action":"image.layers","digest":"A2","layers":["A2:base","A2:app"],"at":2},
+{"action":"image.scan","digest":"A2","verdict":"pass","at":3},
+{"action":"image.layers","digest":"R1","layers":["R1:base","R1:app"],"at":2},
+{"action":"image.scan","digest":"R1","verdict":"pass","at":3},
+{"action":"image.promote","tag":"stable","manifest_digest":"M","at":5}
+]

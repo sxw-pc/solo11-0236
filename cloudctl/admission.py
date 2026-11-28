@@ -1,5 +1,12 @@
 import json
 from .store import one,many,event
+def _gated(db,purpose,replica):
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='feature_gates'").fetchone():return None
+    g=one(db,'SELECT digests_json FROM feature_gates WHERE purpose=?',(purpose,))
+    if not g:return None
+    row=db.execute('SELECT digest FROM release_receipts WHERE replica=? AND status=? ORDER BY at DESC,node DESC LIMIT 1',(replica,'confirmed')).fetchone()
+    digest=row[0] if row else ''
+    return None if digest in json.loads(g['digests_json']) else 'feature_gate_blocked'
 def authorize(db,r):
     if r['expires']<=r['at']:return event(db,'authorize',r['caller'],'invalid_window',{})
     db.execute('INSERT OR REPLACE INTO call_policies VALUES(?,?,?,?)',(r['caller'],r['callee'],r['purpose'],r['expires']))
@@ -22,7 +29,9 @@ def handshake(db,r):
         callee_rep=one(db,'SELECT id FROM replicas WHERE id=? AND cert=? AND active=1',(r['callee_replica'],r['callee_cert']))
         if not caller_rep or not callee_rep:reason='replica_mismatch'
         elif not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['caller_replica'],caller['generation'],'confirmed',r['at'])) or not one(db,'SELECT * FROM receipts WHERE bundle=? AND replica=? AND generation=? AND status=? AND at<=?',(r['bundle'],r['callee_replica'],callee['generation'],'confirmed',r['at'])):reason='unconfirmed_bundle'
-    db.execute('INSERT INTO handshakes VALUES(?,?,?,?,?,?)',(r['id'],caller['identity'] if caller else '',callee['identity'] if callee else '',r['at'],'open' if reason=='allowed' else 'denied',reason))
+        else:
+            reason=_gated(db,r['purpose'],r['callee_replica']) or 'allowed'
+    db.execute('INSERT INTO handshakes VALUES(?,?,?,?,?,?,?,?,?)',(r['id'],caller['identity'] if caller else '',callee['identity'] if callee else '',r['at'],'open' if reason=='allowed' else 'denied',reason,r.get('caller_replica',''),r.get('callee_replica',''),r['purpose']))
     db.execute('INSERT INTO admissions VALUES(?,?,?,?)',(r['id'],r['id'],reason,r['at']))
     return event(db,'handshake',r['id'],reason,{'bundle':r['bundle'],'at':r['at']})
 def close(db,r):

@@ -1,0 +1,7 @@
+[
+{"action":"release.plan","batch":"rel-demo","tag":"stable","manifest_digest":"M","mode":"partial","at":6,"nodes":[
+  {"node":"amd-1","arch":"amd64","identity":"ns/proxy","old_replica":"rep-amd-old","new_replica":"rep-amd-new"},
+  {"node":"arm-1","arch":"arm64","identity":"ns/proxy","old_replica":"rep-arm-old","new_replica":"rep-arm-new","old_digest":"R1"}
+]},
+{"action":"release.gate","purpose":"new-feature","digests":["A2"],"at":6}
+]
